@@ -6,7 +6,7 @@
 
 ```sh
 yarn test-perf                                        # about 7 minutes
-yarn test-perf-mini                                   # about 2 minutes: --scale=0.5 --runs=2 --runtime=node --fail-above=105
+yarn test-perf-mini                                   # about 2 minutes: --scale=0.5 --runs=2 --runtime=node --fail-above=115
 ```
 
 It runs on whatever is in `dist/` (it does not build), downloads the latest release from npm, and runs every group on both builds, interleaved, on Bun and Node. It prints one number: the base build (npm latest) is 100, and the score is 100 times the geometric mean of target time divided by base time over all timed cases. 104 means the target takes about 4 percent longer; below 100 is faster. Below the score it prints the change per runtime and per dimension, and the cases that changed most, so a spike in one dimension shows even when the score barely moves.
@@ -18,7 +18,7 @@ Options (see the top of `vs-npm.js`):
 - `--base=<path>` and `--target=<path>`: the two builds (defaults: npm latest and `dist/alasql.fs.js`). With `--base` set to develop's build, it checks a PR; with both the same, it shows the noise.
 - `--scale=<x>`: multiplies every loop in `bench.js` (0.5 runs half the queries; every case keeps at least 1 query per round and 3 rounds). `bench.js` reports in `queries` how many queries each case timed. Below 1 the score stays reliable but single cases do not, so dimensions are marked only from 25 percent.
 - `--runs=<n>` (default 3), `--runtime=bun`, `node` or `bun,node`, `--group=<name>`.
-- `--fail-above=<n>`: exit code 1 when the score is above n, for CI. `--json` prints the numbers.
+- `--fail-above=<n>`: exit code 1 when the score is above n, for CI. The exit code is also 1 when nothing was measured or a case failed on the tested build. `--json` prints the numbers.
 
 It is not part of CI: on GitHub's shared runners the numbers are too noisy to fail a build on. Run it on a quiet machine.
 

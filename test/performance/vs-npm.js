@@ -4,7 +4,7 @@
 	Usage:
 	  yarn test-perf                                 # runs on whatever is in dist/ (about 7 minutes)
 	  yarn test-perf-mini                            # a quick check, about 2 minutes: --scale=0.5 --runs=2
-	                                                 # --runtime=node --fail-above=105
+	                                                 # --runtime=node --fail-above=115
 	  bun test/performance/vs-npm.js [options]
 
 	Options:
@@ -14,7 +14,8 @@
 	  --runs=<n>          runs per build and runtime, interleaved (default 3)
 	  --runtime=<list>    bun, node or bun,node (default: both when Bun is installed, else node)
 	  --group=<name>      only some groups (repeatable; default every group)
-	  --fail-above=<n>    exit with code 1 when the score is above n (for CI)
+	  --fail-above=<n>    exit with code 1 when the score is above n (for CI). The exit code is
+	                      also 1 when nothing was measured or a case failed on the tested build
 	  --target=<path>     the build to test (default dist/alasql.fs.js; nothing is built first)
 	  --base=<path>       compare against another build instead of npm latest (for example the
 	                      dist/alasql.fs.js of develop, to check a PR; or the same build, to see
@@ -85,6 +86,8 @@ for (const b of builds)
 
 // interleaved runs: npm and local take turns, so drift on the machine hits both alike
 const raw = {};
+// what failed on the local build: an old npm release may lack a feature, the build under test may not
+const failed = new Set();
 const total = RUNS * builds.length * groups.length * runtimes.length;
 let n = 0;
 for (let r = 0; r < RUNS; r++)
@@ -97,10 +100,13 @@ for (let r = 0; r < RUNS; r++)
 					res = measure(rt, b.entry, g, extra);
 				} catch (e) {
 					log(`FAIL ${b.label} ${rt} ${g}: ${String(e.message).split('\n')[0]}`);
+					if (b.label === 'local') failed.add(`${rt} ${g}: did not run`);
 				}
 				for (const [k, v] of Object.entries((res && res.results) || {})) {
 					const ok = typeof v === 'number' && !/wrong|error/.test((res.status || {})[k] || '');
 					((raw[b.label + '|' + rt] ||= {})[k] ||= []).push(ok ? v : null);
+					if (!ok && b.label === 'local' && timed.has(k))
+						failed.add(`${rt} ${k}: ${(res.status || {})[k] || 'not supported'}`);
 				}
 				log(`${n}/${total} ${b.label} ${rt} ${g}`);
 			}
@@ -121,9 +127,11 @@ for (const rt of runtimes)
 const geo = xs =>
 	xs.length ? Math.exp(xs.reduce((s, x) => s + Math.log(x), 0) / xs.length) : null;
 const all = Object.values(ratios).flat();
-const score = Math.round(100 * geo(all.map(x => x.r)));
+// null when nothing was measured: Math.round(100 * null) would be a score of 0, which passes any gate
+const toScore = xs => (xs.length ? Math.round(100 * geo(xs)) : null);
+const score = toScore(all.map(x => x.r));
 const perRt = Object.fromEntries(
-	runtimes.map(rt => [rt, Math.round(100 * geo((ratios[rt] || []).map(x => x.r)))])
+	runtimes.map(rt => [rt, toScore((ratios[rt] || []).map(x => x.r))])
 );
 const perGroup = groups.map(g => ({
 	group: g,
@@ -151,6 +159,7 @@ if (opt.json) {
 				local: commit,
 				runs: RUNS,
 				score,
+				failed: [...failed],
 				runtimes: perRt,
 				dimensions: perGroup,
 				cases: ratios,
@@ -174,7 +183,13 @@ if (opt.json) {
 	console.log(
 		`${RUNS} run${RUNS > 1 ? 's' : ''} per build${SCALE === 1 ? '' : ', loops scaled by ' + SCALE} on ${runtimes.map(runtimeName).join(' and ')}, ${all.length} timed cases\n`
 	);
-	console.log(`Score: ${score}   (${builds[0].name} = 100; higher is slower)`);
+	console.log(
+		`Score: ${score === null ? 'n/a (nothing was measured)' : score}   (${builds[0].name} = 100; higher is slower)`
+	);
+	if (failed.size) {
+		console.log(`\nFailed on ${builds[1].name}:`);
+		for (const f of failed) console.log('  ' + f);
+	}
 	// the score per runtime, when there is more than one (with one it is the score itself)
 	if (runtimes.length > 1)
 		console.log(
@@ -204,5 +219,13 @@ if (opt.json) {
 	console.log(
 		`\nThe score moves by about 2 between identical builds. A dimension at ${MARK} percent or more is marked${SCALE < 1 ? '; below scale 1 single cases get too few queries to compare' : ''}.`
 	);
+}
+if (score === null) {
+	log('FAIL: nothing was measured');
+	process.exit(1);
+}
+if (failed.size) {
+	log(`FAIL: ${failed.size} case${failed.size > 1 ? 's' : ''} failed on ${builds[1].name}`);
+	process.exit(1);
 }
 if (opt['fail-above'] && score > +opt['fail-above']) process.exit(1);

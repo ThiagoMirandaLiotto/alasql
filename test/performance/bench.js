@@ -253,7 +253,16 @@ if (wantDims.length) {
 		}
 	}
 	if (record) {
-		store.recordedWith = `alasql ${alasql.version} (${require('path').resolve(distPath)})`;
+		// a path inside the repo is kept relative to it, anything else only by its file name,
+		// so expected.json does not hold a path from one machine
+		const path = require('path');
+		const abs = path.resolve(distPath);
+		const rel = path.relative(path.join(__dirname, '../..'), abs);
+		const where =
+			rel.startsWith('..') || path.isAbsolute(rel)
+				? path.basename(abs)
+				: rel.split(path.sep).join('/');
+		store.recordedWith = `alasql ${alasql.version} (${where})`;
 		store.digests = Object.fromEntries(Object.entries(store.digests).sort());
 		fs.writeFileSync(expectedFile, JSON.stringify(store, null, '\t') + '\n');
 		console.error(`expected.json: ${Object.keys(store.digests).length} digests`);

@@ -77,5 +77,5 @@
 		"window: 100 partitions": "50000:2a4f7336",
 		"window: 5,000 partitions": "50000:59503ac7"
 	},
-	"recordedWith": "alasql 4.20.1 (/private/tmp/claude-501/-Users-mwulff-git-alasql/4e48fd8f-b132-4c91-85fe-a7e63af91f15/scratchpad/wt-2741/dist/alasql.fs.js)"
+	"recordedWith": "alasql 4.20.1 (dist/alasql.fs.js)"
 }
